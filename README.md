@@ -1,10 +1,8 @@
-# turfgrass_sequoia
-Self-supervised detection and classification of turfgrass abnormalities using vision foundation models and NDVI data using Parrot Sequoia+ camera
-
 # Turfgrass Divot Analysis with Sequoia+ Camera
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT) 
 
 This repository contains the code implementation for our IMVIP Paper 2024. If you find this code useful in your research, please consider citing us.
+Self-supervised detection and classification of turfgrass abnormalities using vision foundation models and NDVI data using Parrot Sequoia+ camera
 
 <!-- TOC -->
 
@@ -51,12 +49,12 @@ code-base/
 ├── requirements.txt
 ├── src/
 │   ├── __init__.py
-│   ├── rectify_images.py     # Process the images of image in folders
-│   ├── align_images.py       # Image alignment of image in folders
-│   ├── calculate_ndvi.py     # Generate NDVI
-│   ├── create_crop_pairs.py  # Generate Sliding windows pairs for RGB and NDVI
-│   ├── create_embeddings.py  # Generate Deep learning embeddings for RGB crops 
-│   ├── cluster_and_report.py
+│   ├── rectify_images.py     # 1. Process the images of image in folders
+│   ├── align_images.py       # 2. Image alignment of image in folders
+│   ├── calculate_ndvi.py     # 3. Generate NDVI
+│   ├── create_crop_pairs.py  # 4. Generate Sliding windows pairs for RGB and NDVI
+│   ├── create_embeddings.py  # 5. Generate Deep learning embeddings for RGB crops 
+│   ├── cluster_and_report.py # 5. Cluster data and generate reports aginst NDVI groundtruth 
 ├── tests/
 │   ├── __init__.py
 │   ├── test_rectify_images.py
