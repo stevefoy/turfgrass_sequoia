@@ -3,12 +3,16 @@
 """
 Author: Stephen Foy
 Date: January 2024
+Good ref paper: https://www.mdpi.com/2072-4292/13/4/577
+Radiometric Correction of Multispectral UAS Images: Evaluating the Accuracy 
+of the Parrot Sequoia Camera and Sunshine Sensor 
 
-Sequoia image processing utilities originally writting by Rasmus but converted 
-
+Original tutorials here:
+https://github.com/rasmusfenger/micasense_imageprocessing_sequoia
 Author: Rasmus Fenger-Nielsen (rasmusfenger@gmail.com)
 Date: January 2019
 
+Sequoia image processing utilities originally by Rasmus 
 Part of the code has been written by other author (see relevant sections below).
 """
 

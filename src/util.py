@@ -13,6 +13,21 @@ import exiftool
 
 import platform
 import tqdm
+import json
+import numpy as np
+
+def save_homography_matrix(H, file_path):
+    """Save the homography matrix to a JSON file."""
+    H_list = H.tolist()  # Convert the matrix to a list
+    with open(file_path, 'w') as f:
+        json.dump(H_list, f)
+
+def load_homography_matrix(file_path):
+    """Load the homography matrix from a JSON file."""
+    with open(file_path, 'r') as f:
+        H_list = json.load(f)
+    H = np.array(H_list)  # Convert the list back to a numpy array
+    return H
 
 def check_cropped_images(input_directory, crop_folder, base_image_path_name):
     base_image_name = os.path.basename(base_image_path_name)
@@ -33,7 +48,6 @@ def check_cropped_images(input_directory, crop_folder, base_image_path_name):
                 print("BAD", cropped_image_rgb_path, "  ", cropped_image_nir_path)
                 raise Exception("STOP FAILING TO FIND FILES")
     return cropped_files
-
 
 
 def process_image_files(input_directory, base_image_name, crop_folder):
@@ -76,7 +90,6 @@ def get_image_list_files(main_folder, crop_folder):
 
 
 def get_exiftool_path():
-    print("herhere")
     """Return the appropriate path to exiftool based on the operating system."""
     if platform.system() == "Windows":
         # Ensure the path to exiftool.exe is correct

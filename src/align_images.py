@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-1. Process the images 
+2. Align the RED LENS to the NIR Channel save, additionally calculate NDVI value
 
 @author: stevefoy
 """
@@ -149,10 +149,8 @@ def calculate_ndvi(nir_path, red_path, save_path):
         plt.imsave(save_path.replace('_RED.TIF', '_NDVI_RGB.png'), ndvi_colored, format='png', dpi=300)
 
 
-def process_folder(process_base_folder, process_folder_list):
-    
-    crop_folder = 'out_scale1.0_S224'
-    
+def process_folder(process_base_folder, process_folder_list, H):
+
     for folder in process_folder_list:
         input_directory = os.path.join(process_base_folder, folder)
         for subfolder in os.listdir(input_directory):
@@ -162,6 +160,7 @@ def process_folder(process_base_folder, process_folder_list):
                 print("found")
                 with open(image_list_file, 'r') as file:
                     fulpath_images_list = [image.strip() for image in file.readlines()]
+                    
                     for image_file in tqdm(fulpath_images_list ):
                         image_file_path = os.path.join(subfolder_path, image_file)
                         print(image_file_path," ", os.path.isfile(image_file_path))
@@ -198,13 +197,18 @@ def process_folder(process_base_folder, process_folder_list):
                         if nir_image_ref is not None and red_image is not None:
                             
                             # red_image_aligned = align_images(nir_image_ref, red_image)
-                            # Hard coded values after at 1 meter off the ground
-                            red_image_aligned  = translate_image(red_image , 5, 25)
-                         
+                            # Hard coded values after at 1 meter off the ground, very good
+                            #red_image_aligned  = translate_image(red_image , 5, 25)
+                            
+                            # Align image with calibration
+                            height, width = red_image.shape[:2]
+                            red_image_aligned = cv2.warpPerspective(red_image, H, (width, height))
+                            
+                            
                             if red_image_aligned  is not None:
                                 print("Images aligned successfully.")
 
-                                nir_image_aligned_path = image_file_path.replace("_RGB.png", "_NIR_ALIGNED.TIF")
+                                nir_image_aligned_path = image_file_path.replace("_RGB.png", "_NIR_REF.TIF")
                                 red_image_aligned_path = image_file_path.replace("_RGB.png", "_RED_ALIGNED.TIF")
 
                                 tiff.imwrite(nir_image_aligned_path, nir_image_ref)
@@ -231,8 +235,10 @@ def main():
     parser.add_argument("--process", type=str, default=config.BASE_PROCESSED_FOLDER, help="Output folder for rectified images.")
 
     args = parser.parse_args()
-
-    process_folder(args.process, args.process_folders )
+    
+    H = util.load_homography_matrix(config.CALILBRATION_RED2NIR_JSON)
+    
+    process_folder(args.process, args.process_folders, H )
 
 if __name__ == "__main__":
     main()
