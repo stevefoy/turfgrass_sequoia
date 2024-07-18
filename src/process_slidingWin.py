@@ -112,9 +112,10 @@ folders = [
 folders = [ 'ATU_21_MAY_2024']
 
 base_folder_path = '/media/freddy/vault/datasets/Processed/'
-save_folder_path = 'out'
+base_folder_path = r'D:\datasets\Processed'
 
-
+    
+crop_folder = 'out_scale1.0_S224_v2'
 
 # Directory walk to collect data and process images
 for i, folder in enumerate(folders):
@@ -127,8 +128,8 @@ for i, folder in enumerate(folders):
     for input_subdirectory in subdirectories:
         input_dir_process = os.path.join(input_directory, input_subdirectory)
         print(input_dir_process)
-        output_directory = os.path.join(input_dir_process,"out")
-        sliding_window_crop(input_dir_process, output_directory+"_scale1.0_S224", window_size=(224, 224), step_size=112)
+        output_directory = os.path.join(input_dir_process,crop_folder)
+        sliding_window_crop(input_dir_process, output_directory, window_size=(224, 224), step_size=112)
 
 #for i in range(1,10,1):
 #	i = round(0.1*i, 1)
