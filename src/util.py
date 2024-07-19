@@ -93,15 +93,25 @@ def get_exiftool_path():
     """Return the appropriate path to exiftool based on the operating system."""
     if platform.system() == "Windows":
         # Ensure the path to exiftool.exe is correct
-        return "C:\\path\\to\\exiftool.exe"
+        return r"C:\exiftool\exiftool.exe"
     else:
         # Assume a typical Unix-like system path
         return "/usr/local/bin/exiftool"
 
 def process_metadata(filepath):
-    exiftool_path = get_exiftool_path()
-    with exiftool.ExifToolHelper(exiftool_path) as exift:
-        metaToolData = exift.get_metadata(filepath)[0]
+    if platform.system() == "Windows":
+        cvd = get_exiftool_path()
+        if not os.path.isfile(cvd):
+            print("Error")
+        
+        with exiftool.ExifToolHelper(executable=cvd) as exift:
+            metaToolData = exift.get_metadata(filepath)[0]
+    else:
+        exiftool_path = get_exiftool_path()
+        print(exiftool_path)
+        with exiftool.ExifToolHelper(exiftool_path) as exift:
+            metaToolData = exift.get_metadata(filepath)[0]
+            
     return metaToolData
 
 

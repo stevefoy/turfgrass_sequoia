@@ -135,9 +135,17 @@ def calculate_ndvi(nir_path, red_path, save_path):
         meta = nir_src.meta
         meta.update(dtype=rasterio.float32, count=1, compress='lzw')
 
+        aligned_path = save_path.replace('_RED_ALIGNED.TIF', '_NDVI.TIF')
+        print(aligned_path)
         # Write NDVI image
-        with rasterio.open(save_path.replace('_RED.TIF', '_NDVI.TIF'), 'w', **meta) as ndvi_dst:
-            ndvi_dst.write(ndvi, 1)
+        try:
+            with rasterio.open(aligned_path, 'w', **meta) as ndvi_dst:
+                ndvi_dst.write(ndvi.astype(rasterio.float32), 1)
+            print(f"Successfully wrote NDVI image to {aligned_path}")
+        except rasterio.errors.RasterioIOError as e:
+            print(f"Rasterio error: {e}")
+        except Exception as e:
+            print(f"Error opening file with rasterio: {e}")
 
         # Create a color map from red to yellow to green
         colormap = cm.ScalarMappable(Normalize(vmin=-1, vmax=1), cm.RdYlGn)
@@ -146,10 +154,12 @@ def calculate_ndvi(nir_path, red_path, save_path):
         ndvi_colored = colormap.to_rgba(ndvi, bytes=True)
 
         # Convert colored NDVI to an image array and save
-        plt.imsave(save_path.replace('_RED.TIF', '_NDVI_RGB.png'), ndvi_colored, format='png', dpi=300)
+        plt.imsave(save_path.replace('_RED_ALIGNED.TIF', '_NDVI_RGB.png'), ndvi_colored, format='png', dpi=300)
+    
+    return aligned_path
 
 
-def process_folder(process_base_folder, process_folder_list, H):
+def process_folder(process_base_folder, process_folder_list, H_RED,  H_NIR2RGB):
 
     for folder in process_folder_list:
         input_directory = os.path.join(process_base_folder, folder)
@@ -202,7 +212,7 @@ def process_folder(process_base_folder, process_folder_list, H):
                             
                             # Align image with calibration
                             height, width = red_image.shape[:2]
-                            red_image_aligned = cv2.warpPerspective(red_image, H, (width, height))
+                            red_image_aligned = cv2.warpPerspective(red_image, H_RED, (width, height))
                             
                             
                             if red_image_aligned  is not None:
@@ -211,11 +221,20 @@ def process_folder(process_base_folder, process_folder_list, H):
                                 nir_image_aligned_path = image_file_path.replace("_RGB.png", "_NIR_REF.TIF")
                                 red_image_aligned_path = image_file_path.replace("_RGB.png", "_RED_ALIGNED.TIF")
 
-                                tiff.imwrite(nir_image_aligned_path, nir_image_ref)
+                                # tiff.imwrite(nir_image_aligned_path, nir_image_ref)
                                 tiff.imwrite(red_image_aligned_path, red_image_aligned)
 
                                 # Calculate and save NDVI
-                                calculate_ndvi(nir_image_aligned_path, red_image_aligned_path, red_image_aligned_path)
+                                
+                                ndvi_path = calculate_ndvi(nir_image_aligned_path, red_image_aligned_path, red_image_aligned_path )
+                                
+                                # Do correction
+                                nir_image_ref = tiff.imread(ndvi_path)
+                                # Align image with calibration
+                                height, width = nir_image_ref.shape[:2]
+                                ndvi_image_aligned = cv2.warpPerspective(nir_image_ref,  H_NIR2RGB, (width, height))
+                                tiff.imwrite(ndvi_path.replace('_NDVI.TIF', '_NDVI_ALIGNED.TIF'), ndvi_image_aligned)
+                                
                             else:
                                 print("Alignment failed.")
                         else:
@@ -236,9 +255,10 @@ def main():
 
     args = parser.parse_args()
     
-    H = util.load_homography_matrix(config.CALILBRATION_RED2NIR_JSON)
+    H_RED2NIR = util.load_homography_matrix(config.CALILBRATION_RED2NIR_JSON)
+    H_NIR2RGB = util.load_homography_matrix(config.CALILBRATION_NIR2RGB_JSON)
     
-    process_folder(args.process, args.process_folders, H )
+    process_folder(args.process, args.process_folders, H_RED2NIR,  H_NIR2RGB )
 
 if __name__ == "__main__":
     main()

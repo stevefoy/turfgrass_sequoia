@@ -124,7 +124,7 @@ def process_folder(input_baser_folder, input_folder_list, output_folder):
             if 'IMG.thumb' in dirs:
                 dirs.remove('IMG.thumb')  
             
-            
+            timeDelta = 0
             #for file in tqdm(files):
             for file in files:
                 filepath = os.path.join(subdir, file)

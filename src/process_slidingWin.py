@@ -109,7 +109,6 @@ folders = [
     'ATU_08_MAY_2024', 'ATU_19_FEB_2024', 'ATU_09_JUNE_2023',
     'ATU_20_MAR_2024'
 ]
-folders = [ 'ATU_21_MAY_2024']
 
 base_folder_path = '/media/freddy/vault/datasets/Processed/'
 base_folder_path = r'D:\datasets\Processed'

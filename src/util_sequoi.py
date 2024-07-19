@@ -46,6 +46,7 @@ def sequoia_irradiance(meta, imageRaw):
     expTime = meta.get('EXIF:ExposureTime')
     gain = meta.get('EXIF:ISO')
 
+    print("formual:", fNumber , " ", B , " ",A , " ",expTime , " ", gain, " ", C)
     # make the calculation (for details, see application note: SEQ AN 01)
     image_irradiance = fNumber ** 2 * (imageRaw - B) / (A * expTime * gain + C)
 
