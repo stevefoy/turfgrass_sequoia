@@ -31,6 +31,8 @@ import pickle
 from sklearn.cluster import AgglomerativeClustering
 # Disable logging
 logging.basicConfig(level=logging.CRITICAL)
+from scipy import stats
+
 
 def clean_labels(labels):
     """Ensure labels are valid by replacing None with 'Unknown'."""
@@ -113,28 +115,39 @@ def plot_tsne_with_imagesV1(embeddings, image_paths, title, folderName):
     plt.savefig(folderName + ".png", dpi=300, bbox_inches='tight')
 
 def read_normalized_ndvi_image(ndvi_image_path):
-    """Read and normalize NDVI image."""
+    """Read and normalize NDVI image get mean"""
     try:
         with rasterio.open(ndvi_image_path) as src:
             ndvi = src.read(1)
-            ndvi_normalized = (ndvi + 1) / 2
+            ndvi_normalized = (ndvi + 1) / 2  # Normalize NDVI to range 0-1
             ndvi_normalized = np.clip(ndvi_normalized, 0, 1.0)
-            return ndvi_normalized
-    except Exception as e:
-        return None
+            
+            border_value = 340282346638528859811704183484516925440.00
+            # Create a mask for the border values
+            mask = ndvi <= 1.1
+            
+            # Apply the mask to the normalized NDVI image
+            ndvi_masked = np.where(mask, ndvi_normalized, np.nan)
+            
+            # Calculate the mean value excluding the borders
+            mean_value = np.nanmean(ndvi_masked)
+            #mode_value = stats.mode(ndvi_masked, nan_policy='omit').mode[0]
+            
+            # Print the highest and smallest NDVI values excluding the masked values
+            highest_value = np.nanmax(ndvi_masked)
+            smallest_value = np.nanmin(ndvi_masked)
+            print(f"Highest NDVI value (excluding masked): {highest_value}")
+            print(f"Smallest NDVI value (excluding masked): {smallest_value}")
 
-def read_normalized_ndvi_image_topremove(ndvi_image_path, offset=24):
-    """Read and normalize NDVI image, removing the top part of the image."""
-    try:
-        with rasterio.open(ndvi_image_path) as src:
-            width = src.width
-            height = src.height
-            ndvi = src.read(1, window=((offset, height), (0, width))).astype(np.float32)
-            ndvi_normalized = (ndvi + 1) / 2  # Normalize using the full range of NDVI values (-1 to +1)
-            ndvi_normalized = np.clip(ndvi_normalized, 0, 1.0)
-            return ndvi_normalized
+            
+            return ndvi_masked, mean_value
+        
     except Exception as e:
-        return None
+        print("Exceptiom ", e)
+        
+        return None, None
+
+
 
 def classify_damage(mean_ndvi):
     """Classify damage based on the mean NDVI value."""
@@ -160,11 +173,12 @@ def assess_damage(ndvi):
     }
     
     damage_assessment = {}
-    total_pixels = ndvi.size
+    valid_pixels = np.isfinite(ndvi)  # Only consider valid (non-NaN) pixels
+    total_valid_pixels = np.sum(valid_pixels)
     
     for level, (min_val, max_val) in damage_levels.items():
-        mask = (ndvi >= min_val) & (ndvi < max_val)
-        damage_assessment[level] = np.sum(mask) / total_pixels * 100
+        mask = (ndvi >= min_val) & (ndvi < max_val) & valid_pixels
+        damage_assessment[level] = np.sum(mask) / total_valid_pixels * 100
         
     return damage_assessment
 
@@ -202,13 +216,14 @@ def load_embeddings_from_file_paths(file_paths, embeddings_folder):
 def get_image_list_files(main_folder, crop_folder):
     all_rgb_crop = []
     for subfolder in os.listdir(main_folder):
-        if subfolder != "embeddings":
+        if subfolder != "embeddings" or subfolder != "embeddings_Resnet":
             subfolder_path = os.path.join(main_folder, subfolder)
             image_list_file = os.path.join(subfolder_path, "imageList.txt")
             if os.path.isfile(image_list_file):
                 all_rgb_crop.extend(process_folder(subfolder_path, image_list_file, crop_folder))
             else:
                 print(f"File {image_list_file} does not exist.")
+            
     return all_rgb_crop
 
 def process_image_files(input_directory, base_image_name, crop_folder):
@@ -225,9 +240,9 @@ def process_image_files(input_directory, base_image_name, crop_folder):
 def check_cropped_images(input_directory, crop_folder, base_image_path_name):
     base_image_name = os.path.basename(base_image_path_name)
     base_rgb_name = os.path.splitext(base_image_name)[0]
-    ndvi_file = base_rgb_name.replace("RGB", "NDVI")
+    ndvi_file = base_rgb_name.replace("RGB", "NDVI_ALIGNED")
     scalesX = ["224", "448", "672", "896"]
-    offsetsY = ["0", "224", "448", "672"]
+    offsetsY = ["224", "448", "672"]
     cropped_files = []
     for scale in scalesX:
         for offset in offsetsY:
@@ -238,6 +253,7 @@ def check_cropped_images(input_directory, crop_folder, base_image_path_name):
             if os.path.isfile(cropped_image_rgb_path) and os.path.isfile(cropped_image_nir_path):
                 cropped_files.append([cropped_image_rgb_path, cropped_image_nir_path])
             else:
+                print(cropped_image_nir_path," ",  cropped_image_rgb_path)
                 raise Exception("STOP FAILING TO FIND FILES")
     return cropped_files
 
@@ -273,19 +289,17 @@ def compare_clusters_to_ground_truth(cluster_dict, damage_levels):
         cluster_comparisons[cluster] = {level: 0 for level in damage_levels.keys()}
         
         for file_path in tqdm(file_paths):
-            file_path_NDVI = file_path.replace("RGB", "NDVI").replace(".png", ".TIF")
+            file_path_NDVI = file_path.replace("RGB", "NDVI_ALIGNED").replace(".png", ".TIF")
             ndvi_image_path = file_path_NDVI
             if os.path.isfile(ndvi_image_path):
-                if check_file_suffix(ndvi_image_path):
-                    ndvi = read_normalized_ndvi_image_topremove(ndvi_image_path)
-                else:
-                    ndvi = read_normalized_ndvi_image(ndvi_image_path)
+
+                ndvi, mean_ndvi = read_normalized_ndvi_image(ndvi_image_path)
                 
                 if ndvi is not None:
                     damage_assessment = assess_damage(ndvi)
                     for level in damage_assessment:
                         cluster_comparisons[cluster][level] += damage_assessment[level]
-                    mean_ndvi = np.mean(ndvi)
+                    # mean_ndvi = np.mean(ndvi)
                     damage_level = classify_damage(mean_ndvi)
                     if 0:
                         debug_view_image(file_path, ndvi)
@@ -304,11 +318,12 @@ def compare_clusters_to_ground_truth(cluster_dict, damage_levels):
 def get_ground_truth_labels(file_paths, damage_levels):
     ground_truth_labels = []
     for file_path in file_paths:
-        ndvi_path = file_path.replace("RGB", "NDVI").replace(".png", ".TIF")
+        ndvi_path = file_path.replace("RGB", "NDVI_ALIGNED").replace(".png", ".TIF")
         logging.info(f"Processing NDVI path: {ndvi_path}")
-        ndvi = read_normalized_ndvi_image(ndvi_path)
-        if ndvi is not None:
-            mean_ndvi = np.mean(ndvi)
+        #mean_ndvi = read_normalized_ndvi_image(ndvi_path)
+        ndvi, mean_ndvi = read_normalized_ndvi_image(ndvi_path)
+        if mean_ndvi is not None:
+            #mean_ndvi = np.mean(ndvi)
             label = classify_damage(mean_ndvi)
             logging.info(f"Mean NDVI: {mean_ndvi}, Label: {label}")
             ground_truth_labels.append(label)
@@ -338,11 +353,12 @@ def map_cluster_labels_to_files(cluster_dict, cluster_labels):
 def get_true_labels(file_label_mapping, damage_levels):
     true_labels = []
     for file_path, _ in file_label_mapping:
-        ndvi_path = file_path.replace('RGB', 'NDVI').replace('.png', '.TIF')
+        ndvi_path = file_path.replace('RGB', 'NDVI_ALIGNED').replace('.png', '.TIF')
         logging.info(f"Processing NDVI path: {ndvi_path}")
-        ndvi = read_normalized_ndvi_image(ndvi_path)
-        if ndvi is not None:
-            mean_ndvi = np.mean(ndvi)
+        
+        ndvi, mean_ndvi = read_normalized_ndvi_image(ndvi_path)
+        if mean_ndvi is not None:
+            
             true_label = classify_damage(mean_ndvi)
             logging.info(f"Mean NDVI: {mean_ndvi}, Label: {true_label}")
             true_labels.append(true_label)
@@ -375,15 +391,18 @@ if __name__ == "__main__":
     ])
     
     folders = [
-        'ATU_09_JUNE_2023', 'ATU_12_July_2023',
+        'ATU_09_JUNE_2023',
         'ATU_30_JAN_2024', 'ATU_19_FEB_2024', 'ATU_05_MAR_2024', 'ATU_20_MAR_2024',
-        'ATU_24_APRIL_2024','ATU_01_MAY_2024','ATU_08_MAY_2024', 'ATU_14_MAY_2024','ATU_21_MAY_2024'
+        'ATU_24_APRIL_2024','ATU_01_MAY_2024','ATU_08_MAY_2024', 'ATU_14_MAY_2024'
     ]
-    
-    base_folder_path = r'D:\datasets\Processed'
-    crop_folder = 'out_scale1.0_S224'
-    embeddings_folder_name = 'embeddings'
+    # folders = ['ATU_09_JUNE_2023'], 
+    base_folder_path = r'C:\Users\stevf\OneDrive\Documents\Projects\Github_IMVIP2024\Processed'
+    crop_folder = 'out_scale1.0_S224_v2' 
 
+    embeddings_folder_name = 'embeddings'
+ #embeddings_EfficientNet
+ # embeddings_Resnet
+ 
     damage_levels = {
         "NDVI1": (0.0, 0.1),
         "NDVI2": (0.1, 0.2),
@@ -411,13 +430,18 @@ if __name__ == "__main__":
 
         all_embeddings.append(embeddings)
         all_paths.extend(paths)
-
+    
+	# Debugging: Check shapes of all_embeddings before concatenation
+    for i, embedding in enumerate(all_embeddings):
+        print(f"Embedding {i} shape: {embedding.shape}")
+        
     # Concatenate all embeddings from all folders
     all_embeddings = np.concatenate(all_embeddings, axis=0)
 
+    
     n_clusters = 5
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    cluster_labels = kmeans.fit_predict(normalize(all_embeddings, norm='l2'))
+    cluster_labels = kmeans.fit_predict(normalize(all_embeddings))
     
     """
     silhouette_scores = 0
@@ -435,11 +459,11 @@ if __name__ == "__main__":
         cluster_labels = kmeans.fit_predict(em)
         silhouette_scores = silhouette_score(em, cluster_labels)
         print("SCORE", k , "  R ", silhouette_scores)
-    """  
+      
     em = normalize(all_embeddings, norm='l2')
     agglo = AgglomerativeClustering(n_clusters=5, metric='cosine', linkage='average')
     cluster_labels = agglo.fit_predict(em)
-
+"""
     cluster_dict = group_filenames_by_cluster(all_paths, cluster_labels)
     cluster_comparisons = compare_clusters_to_ground_truth(cluster_dict, damage_levels)
 
