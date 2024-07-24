@@ -40,7 +40,7 @@ def clean_labels(labels):
 
 def plot_tsne(embeddings, labels, title, folderName):
     """Plot t-SNE for the given embeddings and labels."""
-    tsne = TSNE(n_components=2, verbose=1, perplexity=30, max_iter=300)
+    tsne = TSNE(n_components=2, verbose=1, perplexity=30)
     tsne_results = tsne.fit_transform(embeddings)
 
     plt.figure(figsize=(10, 8))
@@ -83,7 +83,7 @@ def plot_tsne_with_images(embeddings, image_paths, title, folderName, cache_dir=
     for xy, path in zip(tsne_results, image_paths):
         x0, y0 = xy
         img = Image.open(path)
-        img = img.resize((10, 10), Image.LANCZOS)  # Resize the image thumbnail
+        img = img.resize((30, 30), Image.LANCZOS)  # Resize the image thumbnail
         im = OffsetImage(img, zoom=1)
         ab = AnnotationBbox(im, (x0, y0), xycoords='data', frameon=False)
         artists.append(ax.add_artist(ab))
@@ -122,8 +122,8 @@ def read_normalized_ndvi_image(ndvi_image_path):
             ndvi_normalized = (ndvi + 1) / 2  # Normalize NDVI to range 0-1
             ndvi_normalized = np.clip(ndvi_normalized, 0, 1.0)
             
-            border_value = 340282346638528859811704183484516925440.00
-            # Create a mask for the border values
+            # Mask out out of bounds 
+            # Create a mask for the border values previously labelled in the alignment process
             mask = ndvi <= 1.1
             
             # Apply the mask to the normalized NDVI image
@@ -131,16 +131,17 @@ def read_normalized_ndvi_image(ndvi_image_path):
             
             # Calculate the mean value excluding the borders
             mean_value = np.nanmean(ndvi_masked)
+            std_ndvi = np.nanstd(ndvi_masked)
             #mode_value = stats.mode(ndvi_masked, nan_policy='omit').mode[0]
             
             # Print the highest and smallest NDVI values excluding the masked values
             highest_value = np.nanmax(ndvi_masked)
             smallest_value = np.nanmin(ndvi_masked)
-            print(f"Highest NDVI value (excluding masked): {highest_value}")
-            print(f"Smallest NDVI value (excluding masked): {smallest_value}")
+            #print(f"Highest NDVI value (excluding masked): {highest_value}")
+            #print(f"Smallest NDVI value (excluding masked): {smallest_value}")
 
             
-            return ndvi_masked, mean_value
+            return ndvi_masked, mean_value, std_ndvi
         
     except Exception as e:
         print("Exceptiom ", e)
@@ -149,16 +150,21 @@ def read_normalized_ndvi_image(ndvi_image_path):
 
 
 
-def classify_damage(mean_ndvi):
-    """Classify damage based on the mean NDVI value."""
-    thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    for i, threshold in enumerate(thresholds):
-        if mean_ndvi < threshold:
-            return f"NDVI{i+1}"
-    return "NDVI10"
+def classify_damage(mean_ndvi: float, std_dev_ndvi: float) -> str:
 
+    thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    
+    # Thresholds based on standard deviation 
+    adjusted_mean_ndvi = mean_ndvi  - std_dev_ndvi / 2
+    
+    for i, threshold in enumerate(thresholds):
+        if adjusted_mean_ndvi < threshold:
+            return f"NDVI{i + 1}"
+    
+    return "NDVI10"
+"""
 def assess_damage(ndvi):
-    """Assess damage levels for given NDVI data."""
+
     damage_levels = {
         "NDVI1": (0.0, 0.1),
         "NDVI2": (0.1, 0.2),
@@ -181,6 +187,45 @@ def assess_damage(ndvi):
         damage_assessment[level] = np.sum(mask) / total_valid_pixels * 100
         
     return damage_assessment
+
+
+
+# Look at NDVI patch and see what 
+def assess_damage(ndvi) :
+
+    damage_levels = {
+        "NDVI1": (0.0, 0.1),
+        "NDVI2": (0.1, 0.2),
+        "NDVI3": (0.2, 0.3),
+        "NDVI4": (0.3, 0.4),
+        "NDVI5": (0.4, 0.5),
+        "NDVI6": (0.5, 0.6),
+        "NDVI7": (0.6, 0.7),
+        "NDVI8": (0.7, 0.8),
+        "NDVI9": (0.8, 0.9),
+        "NDVI10": (0.9, 1.0)
+    }
+    
+    valid_pixels = np.isfinite(ndvi)  # Only consider valid (non-NaN) pixels
+    total_valid_pixels = np.sum(valid_pixels)
+    
+    if total_valid_pixels == 0:
+        # Handle the case where there are no valid pixels
+        return {level: 0.0 for level in damage_levels}
+    
+    mean_ndvi = np.mean(ndvi[valid_pixels])
+    std_dev_ndvi = np.std(ndvi[valid_pixels])
+    
+    damage_assessment = {}
+    
+    for level, (min_val, max_val) in damage_levels.items():
+        adjusted_min_val = min_val 
+        adjusted_max_val = max_val
+        mask = (ndvi >= adjusted_min_val) & (ndvi < adjusted_max_val) & valid_pixels
+        damage_assessment[level] = np.sum(mask) / total_valid_pixels * 100
+    
+    return damage_assessment
+"""
 
 def load_embeddings_from_file_paths(file_paths, embeddings_folder):
     embeddings = []
@@ -208,7 +253,7 @@ def load_embeddings_from_file_paths(file_paths, embeddings_folder):
             paths.append(file_rgb_path)
            
         except Exception as e:
-            logging.error(f"Error loading embedding {embedding_path}: {e}")
+            print(f"Error loading embedding {embedding_path}: {e}")
     
     embeddings = np.array(embeddings)
     return embeddings, paths
@@ -287,20 +332,22 @@ def compare_clusters_to_ground_truth(cluster_dict, damage_levels):
 
     for cluster, file_paths in tqdm(cluster_dict.items()):
         cluster_comparisons[cluster] = {level: 0 for level in damage_levels.keys()}
-        
+        # Each cluster ID will have loads embedding paths
         for file_path in tqdm(file_paths):
             file_path_NDVI = file_path.replace("RGB", "NDVI_ALIGNED").replace(".png", ".TIF")
             ndvi_image_path = file_path_NDVI
             if os.path.isfile(ndvi_image_path):
 
-                ndvi, mean_ndvi = read_normalized_ndvi_image(ndvi_image_path)
+                ndvi, mean_ndvi, std_ndvi = read_normalized_ndvi_image(ndvi_image_path)
                 
                 if ndvi is not None:
+                    # Put a flag on which NDVI score we want to match this to
                     damage_assessment = assess_damage(ndvi)
                     for level in damage_assessment:
                         cluster_comparisons[cluster][level] += damage_assessment[level]
                     # mean_ndvi = np.mean(ndvi)
-                    damage_level = classify_damage(mean_ndvi)
+                    #damage_level = classify_damage(mean_ndvi, std_ndvi)
+                    
                     if 0:
                         debug_view_image(file_path, ndvi)
                         debug_view_image_raw(file_path, ndvi_image_path)
@@ -309,7 +356,7 @@ def compare_clusters_to_ground_truth(cluster_dict, damage_levels):
                             print(f"{level}: {percentage:.2f}%")
         
         num_files = len(file_paths)
-        
+        # Calculate the average for each level of NDVI 
         for level in cluster_comparisons[cluster]:
             cluster_comparisons[cluster][level] /= num_files
     
@@ -321,10 +368,10 @@ def get_ground_truth_labels(file_paths, damage_levels):
         ndvi_path = file_path.replace("RGB", "NDVI_ALIGNED").replace(".png", ".TIF")
         logging.info(f"Processing NDVI path: {ndvi_path}")
         #mean_ndvi = read_normalized_ndvi_image(ndvi_path)
-        ndvi, mean_ndvi = read_normalized_ndvi_image(ndvi_path)
+        ndvi, mean_ndvi, std_ndvi = read_normalized_ndvi_image(ndvi_path)
         if mean_ndvi is not None:
             #mean_ndvi = np.mean(ndvi)
-            label = classify_damage(mean_ndvi)
+            label = classify_damage(mean_ndvi,  std_ndvi)
             logging.info(f"Mean NDVI: {mean_ndvi}, Label: {label}")
             ground_truth_labels.append(label)
         else:
@@ -342,6 +389,20 @@ def assign_cluster_labels(cluster_dict, damage_levels):
             logging.error(f"No ground truth labels found for cluster {cluster}")
     return cluster_labels
 
+
+def assign_cluster_labels_old(cluster_dict):
+    new_cluster_dict = {}
+
+    
+    for key in cluster_dict:
+        new_label = f"NDVI{key + 1}"
+        new_cluster_dict[key] = new_label
+
+    return new_cluster_dict
+
+
+
+
 def map_cluster_labels_to_files(cluster_dict, cluster_labels):
     file_label_mapping = []
     for cluster, file_paths in cluster_dict.items():
@@ -356,10 +417,10 @@ def get_true_labels(file_label_mapping, damage_levels):
         ndvi_path = file_path.replace('RGB', 'NDVI_ALIGNED').replace('.png', '.TIF')
         logging.info(f"Processing NDVI path: {ndvi_path}")
         
-        ndvi, mean_ndvi = read_normalized_ndvi_image(ndvi_path)
+        ndvi, mean_ndvi, std_ndvi  = read_normalized_ndvi_image(ndvi_path)
         if mean_ndvi is not None:
             
-            true_label = classify_damage(mean_ndvi)
+            true_label = classify_damage(mean_ndvi, std_ndvi)
             logging.info(f"Mean NDVI: {mean_ndvi}, Label: {true_label}")
             true_labels.append(true_label)
         else:
@@ -390,18 +451,20 @@ if __name__ == "__main__":
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     
-    folders = [
-        'ATU_09_JUNE_2023',
-        'ATU_30_JAN_2024', 'ATU_19_FEB_2024', 'ATU_05_MAR_2024', 'ATU_20_MAR_2024',
-        'ATU_24_APRIL_2024','ATU_01_MAY_2024','ATU_08_MAY_2024', 'ATU_14_MAY_2024'
+    FOLDER_CAPTURES = [
+        'ATU_01_MAY_2024','ATU_24_APRIL_2024',
+        'ATU_05_MAR_2024', 'ATU_14_MAY_2024', 'ATU_30_JAN_2024',
+        'ATU_08_MAY_2024', 'ATU_19_FEB_2024', 'ATU_09_JUNE_2023',
+        'ATU_20_MAR_2024', 'ATU_21_MAY_2024',
     ]
-    # folders = ['ATU_09_JUNE_2023'], 
+
+    
     base_folder_path = r'C:\Users\stevf\OneDrive\Documents\Projects\Github_IMVIP2024\Processed'
     crop_folder = 'out_scale1.0_S224_v2' 
 
     embeddings_folder_name = 'embeddings'
- #embeddings_EfficientNet
- # embeddings_Resnet
+    # embeddings_EfficientNet
+    # embeddings_Resnet
  
     damage_levels = {
         "NDVI1": (0.0, 0.1),
@@ -421,110 +484,135 @@ if __name__ == "__main__":
     all_embeddings = []
     all_paths = []
 
-    for folder in folders:
+    for folder in FOLDER_CAPTURES :
+        
+        all_true_labels = []
+        all_predicted_labels = []
+        all_embeddings = []
+        all_paths = []
+        
+
+
         input_directory = os.path.join(base_folder_path, folder)
         file_paths = get_image_list_files(input_directory, crop_folder)
 
         embeddings_folder = os.path.join(input_directory, embeddings_folder_name)
         embeddings, paths = load_embeddings_from_file_paths(file_paths, embeddings_folder)
 
+        print("embeddings", len(embeddings))
+            
         all_embeddings.append(embeddings)
         all_paths.extend(paths)
     
-	# Debugging: Check shapes of all_embeddings before concatenation
-    for i, embedding in enumerate(all_embeddings):
-        print(f"Embedding {i} shape: {embedding.shape}")
-        
-    # Concatenate all embeddings from all folders
-    all_embeddings = np.concatenate(all_embeddings, axis=0)
-
+       
+    	# Debugging: Check shapes of all_embeddings before concatenation
+        for i, embedding in enumerate(all_embeddings):
+            print(f"Embedding {i} shape: {embedding.shape}")
+            
+            # Concatenate all embeddings from all folders
+        all_embeddings = np.concatenate(all_embeddings, axis=0)
     
-    n_clusters = 5
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    cluster_labels = kmeans.fit_predict(normalize(all_embeddings))
+        # 1. Perform K-means clustering
+        n_clusters = 5
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        cluster_labels = kmeans.fit_predict(normalize(all_embeddings))
     
-    """
-    silhouette_scores = 0
-    em = normalize(all_embeddings, norm='l2')
-    for k in range(2,10,1 ):
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        cluster_labels = kmeans.fit_predict(em)
-        silhouette_scores = silhouette_score(em, cluster_labels)
-        print("SCORE", k , "  R ", silhouette_scores)
-   
-    silhouette_scores = 0
-    em = normalize(all_embeddings)
-    for k in range(2,10,1 ):
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        cluster_labels = kmeans.fit_predict(em)
-        silhouette_scores = silhouette_score(em, cluster_labels)
-        print("SCORE", k , "  R ", silhouette_scores)
-      
-    em = normalize(all_embeddings, norm='l2')
-    agglo = AgglomerativeClustering(n_clusters=5, metric='cosine', linkage='average')
-    cluster_labels = agglo.fit_predict(em)
-"""
-    cluster_dict = group_filenames_by_cluster(all_paths, cluster_labels)
-    cluster_comparisons = compare_clusters_to_ground_truth(cluster_dict, damage_levels)
-
-    cluster_labels_assigned = assign_cluster_labels(cluster_dict, damage_levels)
-    file_label_mapping = map_cluster_labels_to_files(cluster_dict, cluster_labels_assigned)
-    true_labels = get_true_labels(file_label_mapping, damage_levels)
-    predicted_labels = [label for _, label in file_label_mapping]
-
-    all_true_labels = clean_labels(true_labels)
-    all_predicted_labels = clean_labels(predicted_labels)
-
-    # Filter classes to include only those present in true_labels
-    classes = [cls for cls in damage_levels.keys() if cls in all_true_labels]
-
-    if not classes:
-        logging.error("No valid classes found in true_labels. Skipping further analysis.")
-    else:
-        logging.info(f"True labels: {all_true_labels}")
-        logging.info(f"Predicted labels: {all_predicted_labels}")
-        logging.info(f"Classes: {classes}")
-
-        contingency_matrix = get_contingency_matrix(all_true_labels, all_predicted_labels, classes)
-
-        label_mapping = match_labels_with_hungarian_algorithm(contingency_matrix)
-        mapped_labels = map_labels(all_predicted_labels, label_mapping)
-
-        conf_matrix = confusion_matrix(all_true_labels, mapped_labels, labels=classes)
-        class_report = classification_report(all_true_labels, mapped_labels, labels=classes, target_names=classes)
-        f1 = f1_score(all_true_labels, mapped_labels, average='weighted')
-
-        # Save results to file
-        output_file = "results_combined.txt"
-        with open(output_file, 'a') as f:
-            f.write("Combined Results:\n")
-            f.write("Contingency Matrix:\n")
-            f.write(np.array2string(contingency_matrix) + "\n\n")
+        """
+        silhouette_scores = 0
+        em = normalize(all_embeddings, norm='l2')
+        for k in range(2,10,1 ):
+            kmeans = KMeans(n_clusters=k, random_state=42)
+            cluster_labels = kmeans.fit_predict(em)
+            silhouette_scores = silhouette_score(em, cluster_labels)
+            print("SCORE", k , "  R ", silhouette_scores)
+       
+    
+        """
+        # Map all the returned cluster labels to the orginal paths
+        cluster_dict = group_filenames_by_cluster(all_paths, cluster_labels)
+        # NOW cluster dictionary , is like {8: ['C:\\Users\\stevf\\OneDri
         
-            f.write("Label Mapping:\n")
-            f.write(str(label_mapping) + "\n\n")
+       
         
-            f.write("Confusion Matrix:\n")
-            f.write(np.array2string(conf_matrix) + "\n\n")
+        # V1 Loop onver cluster and paths, for each cluster populate the damage levels struct, BIT C++ struct design here 
+        #cluster_comparisons = compare_clusters_to_ground_truth(cluster_dict, damage_levels)
+    
+        #v2 Loop onver cluster and paths, for each cluster populate single 
+        # Need map a cluster to classes some what
+        cluster_labels_assigned = assign_cluster_labels(cluster_dict, damage_levels)
         
-            f.write("Classification Report:\n")
-            f.write(class_report + "\n\n")
+        # give each file an cluster label , [('..\\ATU_0155953_0000_RGB_scaled_1.0_crop_224_224.png', 'NDVI7')
+        file_label_mapping = map_cluster_labels_to_files(cluster_dict, cluster_labels_assigned)
         
-            f.write(f"Weighted F1 Score: {f1:.4f}\n\n")
+        true_labels = get_true_labels(file_label_mapping, damage_levels)
+        predicted_labels = [label for _, label in file_label_mapping]
+    
+        all_true_labels = clean_labels(true_labels)
+        all_predicted_labels = clean_labels(predicted_labels)
+    
+        # Filter classes to include only those present in true_labels
+        classes = [cls for cls in damage_levels.keys() if cls in all_true_labels]
+    
         
-            for cluster, comparisons in cluster_comparisons.items():
-                f.write(f"Cluster {cluster} comparisons:\n")
-                for level, percentage in comparisons.items():
-                    f.write(f"{level}: {percentage:.2f}%\n")
-                f.write("\n")
-
-        for cluster, comparisons in cluster_comparisons.items():
-            logging.info(f"Cluster {cluster} comparisons: {comparisons}")
-
-        # Ensure embeddings is a NumPy array
-        if isinstance(all_embeddings, list):
-            all_embeddings = np.vstack(all_embeddings)
-
-        plot_tsne(all_embeddings, all_predicted_labels, "t-SNE with Cluster Labels", "Combined")
-        plot_tsne(all_embeddings, all_true_labels, "t-SNE with True Labels", "Combined")
-        plot_tsne_with_images(all_embeddings, all_paths, "t-SNE with Images", "Combined")
+        if not classes:
+            logging.error("No valid classes found in true_labels. Skipping further analysis.")
+        else:
+            logging.info(f"True labels: {all_true_labels}")
+            logging.info(f"Predicted labels: {all_predicted_labels}")
+            logging.info(f"Classes: {classes}")
+    
+            contingency_matrix = get_contingency_matrix(all_true_labels, all_predicted_labels, classes)
+    
+            label_mapping = match_labels_with_hungarian_algorithm(contingency_matrix)
+            mapped_labels = map_labels(all_predicted_labels, label_mapping)
+    
+            conf_matrix = confusion_matrix(all_true_labels, mapped_labels, labels=classes)
+            class_report = classification_report(all_true_labels, mapped_labels, labels=classes, target_names=classes)
+            f1 = f1_score(all_true_labels, mapped_labels, average='weighted')
+    
+            # Save results to file
+            output_file = "results_montlyV2.txt"
+            
+            with open(output_file, 'a') as f:
+                f.write("Site: "+folder+" Combined Results:\n")
+                #f.write(folder+"\n")
+                f.write("Contingency Matrix:\n")
+                f.write(np.array2string(contingency_matrix) + "\n\n")
+            
+                f.write("Label Mapping:\n")
+                f.write(str(label_mapping) + "\n\n")
+            
+                f.write("Confusion Matrix:\n")
+                f.write(np.array2string(conf_matrix) + "\n\n")
+            
+                f.write("Classification Report:\n")
+                f.write(class_report + "\n\n")
+            
+                f.write(f"Weighted F1 Score: {f1:.4f}\n\n")
+            
+                #for cluster, comparisons in cluster_comparisons.items():
+                #    f.write(f"Cluster {cluster} comparisons:\n")
+                #    for level, percentage in comparisons.items():
+                #        f.write(f"{level}: {percentage:.2f}%\n")
+                #    f.write("\n")
+            output_file2 = "results_montly_overleaf.txt"
+            
+            with open(output_file2, 'a') as f:
+                f.write("Site: "+folder+" Combined Results:\n")
+                f.write("Classification Report:\n")
+                f.write(class_report + "\n\n")
+    
+            
+            print("REPORT COMPLETED ")
+            
+            #for cluster, comparisons in cluster_comparisons.items():
+            #    logging.info(f"Cluster {cluster} comparisons: {comparisons}")
+           #     print(f"Cluster {cluster} comparisons: {comparisons}")
+    
+            # Ensure embeddings is a NumPy array
+            #if isinstance(all_embeddings, list):
+            #    all_embeddings = np.vstack(all_embeddings)
+            #folder = "ALL"
+            #plot_tsne(all_embeddings, all_predicted_labels, "t-SNE with Cluster Labels", folder)
+            #plot_tsne(all_embeddings, all_true_labels, "t-SNE with True Labels", folder)
+            #plot_tsne_with_images(all_embeddings, all_paths, "t-SNE with Images", folder)

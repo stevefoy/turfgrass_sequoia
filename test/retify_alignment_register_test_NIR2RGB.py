@@ -243,6 +243,9 @@ def apply_homography_to_folder(homography_file, input_folder, output_folder, roi
 if __name__ == "__main__":
     img_path = '/media/freddy/vault/datasets/Parrot/zendo_release/processed/Calibration/0020/IMG_240711_094018_0000_NIR.TIF'
     img_ref_path = '/media/freddy/vault/datasets/Parrot/zendo_release/processed/Calibration/0020/IMG_240711_094018_0000_RGB.png'
+    
+    img_path = r"D:\datasets\Processed\ATU_30_JAN_2024\0118\IMG_240130_143104_0000_NDVI_ALIGNED.TIF"
+    img_ref_path = r"D:\datasets\Processed\ATU_30_JAN_2024\0118\IMG_240130_143104_0000_RGB.png"
     pattern_size = (12, 8)
     roi_nir = (0, 25, 1280, 960)  # Example ROI coordinates (x, y, width, height)
     roi_rgb = (0, 25, 1280, 960)  # Example ROI coordinates (x, y, width, height)

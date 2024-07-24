@@ -157,7 +157,8 @@ def process_folder(input_baser_folder, input_folder_list, output_folder):
                         # NIR
                         #filepath = os.path.join(subdir, file)
                         #save_subdir = subdir.replace(base_folder_path, save_folder_path)
-                        TypeFiles = ["NIR", "RED","REG","GRE" ]
+                        #TypeFiles = ["NIR", "RED","REG","GRE" ]
+                        TypeFiles = ["NIR", "RED" ]
                         TypesNames = []
                         for extTypes in TypeFiles:
                             related_files = util.find_related_files(file, subdir, extTypes)

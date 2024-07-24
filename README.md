@@ -34,7 +34,7 @@ To set up the environment manually:
 conda create --name your_env_name
 conda install -c conda-forge pytorch-gpu
 conda install torchvision
-conda install exiftool  # For image tags, adjust based on your system
+conda install exiftool  # For image tags, adjust based on your system, 
 ```
 
 ## Code Structure
@@ -50,16 +50,17 @@ code-base/
 ├── src/
 │   ├── __init__.py
 │   ├── rectify_images.py     # 1. Process the images of image in folders
-│   ├── align_images.py       # 2. Image alignment of image in folders
-│   ├── calculate_ndvi.py     # 3. Generate NDVI
-│   ├── create_crop_pairs.py  # 4. Generate Sliding windows pairs for RGB and NDVI
-│   ├── create_embeddings.py  # 5. Generate Deep learning embeddings for RGB crops 
+│   ├── align_images.py       # 2. Image alignment of image in folders & NDVI
+│   ├── create_crop_pairs.py  # 3. Generate Sliding windows pairs for RGB and NDVI_Aligned
+│   ├── create_embeddings.py  # 4. Generate Deep learning embeddings for RGB crops 
 │   ├── cluster_and_report.py # 5. Cluster data and generate reports aginst NDVI groundtruth 
-├── tests/
+│   ├── config.py             # configuration global vars
+├── tests/ # Exploration and testing on the data
 │   ├── __init__.py
 │   ├── test_rectify_images.py
 │   ├── test_align_images.py
 │   ├── test_calculate_ndvi.py
+    ├── .......              # Other scripts
 ├── notebooks/
 │   ├── exploratory_analysis.ipynb
 ├── data/
@@ -78,6 +79,8 @@ code-base/
 - [x] Finalize Conda environment
 - [x] Refactor code for paper release
 - []  Tests 
+- []  Paper link for IMVIP 2024
+- [] MORE research on  
 
 ## Acknowledgement
 - [Tutorial for Parrot Sequoia and Sequoia+ corrections](https://github.com/stevefoy/micasense_imageprocessing_sequoia/tree/master)
